@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>TSC Simulator</title>
+<meta charset="utf-8">
+
+<!--
+
+Dear person who is viewing this code!
+
+Be warned that it is very ugly. The main objective was getting this done
+before the three-sided coin hype is over, so the code is basically a big
+heap of grown spaghetti. Feel free to play around in it but don't say
+you haven't been warned.
+
+-->
+
+<style>
+* {
+	margin:0;
+	padding:0
+}
+
+body {
+	overflow:hidden;
+	background: url(media/bg.jpg) no-repeat center center fixed; 
+	-webkit-background-size: contain;
+	-moz-background-size: contain;
+	-o-background-size: contain;
+	background-size: contain;
+	background-color:#301d21;
+	color:#ffffff;
+	font-size:14pt;
+	font-family:sans-serif;
+}
+
+td {padding:10px}
+
+button {
+	padding:10px;
+	font-size:14pt;
+	border:solid 2px black;
+}
+
+.slider {
+    -webkit-appearance: none;
+    width: 250px;
+    height: 10px;
+    border-radius: 5px;   
+    background: #909090;
+    outline: none;
+	margin-bottom: 10px;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%; 
+    background: #ffaa22;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #ffaa22;
+    cursor: pointer;
+}
+
+</style>
+</head>
+<body>
+
+
+
+<div style="position:absolute; left:20px; top:10px;">
+<b>Coin d/h ratio: <span id="ratio_"></span></b><br>
+<input type="range" min="0.5" max="5" value="2.28" step="0.02" class="slider" id="ratio"><br>
+Coin diameter: <span id="dcoin_"></span>cm<br>
+<input type="range" min="1" max="5" value="2.5" step=0.1 class="slider" id="dcoin"><br>
+Number of coins: <span id="ncoins_"></span><br>
+<input type="range" min="1" max="99" value="30" class="slider" id="ncoins"><br><br>
+
+Number of throws: <span id="nthrows_"></span><br>
+<input type="range" min="1" max="100" value="10" class="slider" id="nthrows"><br>
+Number of shakes: <span id="nshakes_"></span><br>
+<input type="range" min="1" max="10" value="3" class="slider" id="nshakes"><br>
+Shaking frequency: <span id="fshake_"></span>Hz<br>
+<input type="range" min="0" max="10" value="3" step="0.1" class="slider" id="fshake"><br>
+Shaking amplitude: <span id="ashake_"></span>cm<br>
+<input type="range" min="0" max="50" value="5" class="slider" id="ashake"><br>
+Drop height: <span id="hdrop_"></span>cm<br>
+<input type="range" min="5" max="100" value="15" class="slider" id="hdrop"><br><br>
+
+Cup diameter: <span id="dcup_"></span>cm<br>
+<input type="range" min="5" max="30" value="10" class="slider" id="dcup"><br>
+Cup height: <span id="hcup_"></span>cm<br>
+<input type="range" min="5" max="30" value="18" class="slider" id="hcup"><br><br>
+</div>
+
+<div style="position:absolute; right:20px; top:10px;">
+Slomo: <span id="slomo_"></span>x<br>
+<input type="range" min="1" max="10" value="2" step=0.1 class="slider" id="slomo"><br>
+Waiting: <span id="wait_"></span>s<br>
+<input type="range" min="1" max="10" value="1.7" step=0.1 class="slider" id="wait"><br>
+Gravity: -<span id="gravity_"></span>m/s²<br>
+<input type="range" min="0" max="100" value="9.8" step=0.2 class="slider" id="gravity"><br>
+Stiffness: 10^<span id="stiffness_"></span>N/mm<br>
+<input type="range" min="-2" max="8" value="4" step=0.1 class="slider" id="stiffness"><br>
+Restitution: <span id="restitution_"></span><br>
+<input type="range" min="0" max="1" value="0.5" step=0.01 class="slider" id="restitution"><br>
+Friction: 10^<span id="friction_"></span><br>
+<input type="range" min="-5" max="1" value="-3" step=0.1 class="slider" id="friction"><br>
+Iterations: <span id="iterations_"></span><br>
+<input type="range" min="1" max="50" value="10" class="slider" id="iterations"><br><br>
+
+Matt's hair: <span id="hair_"></span><br>
+<input type="range" min="0" max="1" value="1" class="slider" id="hair"><br><br><br>
+
+<center>
+<button id="test" style="background-color:#aaaaaa;" onclick="test()">Test<br>setup</button> &nbsp;&nbsp;
+<button id="run"  style="background-color:#ffaa22;" onclick="run()">Run scientific<br>simulation!</button>
+<button id="stop" style="background-color:#cc0000; color:white; display:none" onclick="stop()">Abort<br>simulation!</button>
+
+</center>
+</div>
+
+<table style="position:absolute; left:10%; bottom:20px; font-size:24pt; background-color:rgba(255,255,255,0.8)" width=80%>
+<tr>
+<td width="19%" style="color:black">Throw: <span id="throw_"></span></td>
+<td width="27%" style="color:#ab2100">Heads: <span id="theads_"></span> <span id="cheads_"></span></td>
+<td width="27%" style="color:#bb8030">Edges: <span id="tedges_"></span> <span id="cedges_"></span></td>
+<td width="27%" style="color:#2e5052">Tails: <span id="ttails_"></span> <span id="ctails_"></span></td>
+</tr>
+</table>
+
+<table id="annoyscreen" style="position:absolute; left:15%; top:15%; font-size:24pt; background-color:rgba(255,255,255,0.9); color:black" width=70% height=70%>
+<tr><td style="padding:5%"><center><span id="annoyer"></span><br><br>
+<button id="ok" style="color:white; background-color:#000080; font-size:24pt" onclick="accept()"></button>
+</center></td></tr>
+</table>
+
+<canvas id="canv">
+
+<audio id="audio" src="media/standupmathsloop.ogg"></audio>
+
+<script src="libs/three.js"></script>
+<script src="libs/cannon.js"></script>
+<!--<script src="libs/renderphysics.js"></script>-->
+<script src="libs/OrbitControls.js"></script>
+<script>
+
+	var annoyance = 1;
+
+	function accept(){
+		if(annoyance==1){
+			document.getElementById("annoyer").innerHTML="This simulation is partly badass scientific research in order to push the bleeding edge of mathematics and physics further and partly a fan project as a tribute to the great stand-up mathematician Matt Parker.";
+			document.getElementById("ok").innerHTML="Got it!"
+			annoyance = 2;
+			return;
+		}
+		if(annoyance==2){
+			document.getElementById("annoyer").innerHTML="And in no way what so ever does this whole thing serve the purpose of sneakily promoting MY VERY OWN BRAND NEW MATHS CHANNEL <a href='https://www.youtube.com/channel/UCEi0j1Q_RzXRI2YLAp5ZcGQ' style='color:#000080' target='_blank'><b><u>AlmondBread</u></b></a> !!!<br><br>(where I will soon investigate the mathematically optimal way to approach a red traffic light by the way, so make sure you don't subscribe if you want to miss out on it)";
+			document.getElementById("ok").innerHTML="Alright!"
+			annoyance = 3;
+			return;
+		}
+		if(annoyance==3){
+			document.getElementById("annoyer").innerHTML="One last thing:<br>Although this simulation might look convincingly realistic, please don't submit your simulated results to Matt's result submission form, as they might still not be realistic enough.";
+			document.getElementById("ok").innerHTML="Understood."
+			annoyance = 4;
+			return;
+		}
+		if(annoyance==4){
+			document.getElementById("annoyer").innerHTML="Note that this site doesn't use cookies so there's no annoying cookie warning that you have to click away.";
+			document.getElementById("ok").innerHTML="AAAAH! Let me play already!"
+			annoyance = 5;
+			return;
+		}
+		document.getElementById("annoyscreen").style.display = "none";
+	}
+	accept()
+
+
+	var fshake = 3.0;
+	var nshakes = 3.0;
+	var nthrows = 10;
+	var ithrow = 0;
+	var shakeamp = 0.05;
+	var dropheight = 0.15;
+
+	var cupdiameter = 0.15;
+	var cupheight = 0.18;
+
+	var ncoins = 30;
+	var coindiameter = 0.02;
+	var coinratio = 2.28;
+
+	var coins = [];
+	var coinobjs = [];
+
+	var movingtime = nshakes/fshake;
+
+	var audio = document.getElementById("audio");
+
+	var headcolor = new THREE.Color(0xab2100);
+	var tailcolor = new THREE.Color(0x2e5052);
+	var edgecolor = new THREE.Color(0xffb850);
+
+	function cupvz(time){
+		// z = dropheight + shakeamp*(1-cos(2*pi*fshake * time))
+		// derivative:
+		if(time <= movingtime){
+			return shakeamp * 2*pi*fshake * sin(2*pi*fshake * time)
+		}
+		else{
+			return 0;
+		}
+	}
+
+	function cupwy(time){
+		// phi = pi*(0.5-0.5*cos(time / movingtime * pi))
+		// derivative:
+		if(time <= movingtime){
+			return pi*0.5/movingtime*pi*sin(time / movingtime * pi);
+		}
+		else{
+			return 0;
+		}
+	}		
+
+
+	var pi=Math.PI, cos=Math.cos, sin=Math.sin;
+
+	var time = 0.0;
+	var testing = true;
+	var simulating = false;
+	var dt = 1.0/60.0;
+
+	var world = new CANNON.World();
+	world.gravity.set(0,0,-9.81);
+	world.broadphase = new CANNON.NaiveBroadphase();
+	world.solver.iterations = 10;
+
+	var wood = new CANNON.Material('wood');
+	var wood_wood = new CANNON.ContactMaterial(wood, wood, {
+		friction: 0.003,
+		restitution: 0.5
+	});
+	console.log(wood_wood)
+	world.addContactMaterial(wood_wood);
+
+	// ground plane
+	var groundShape = new CANNON.Plane();
+	var groundBody = new CANNON.Body({ mass: 0, material: wood });
+	groundBody.addShape(groundShape);
+	world.addBody(groundBody);
+
+	var cup=null, cupmesh=null, lid=null;
+
+	function generateCupAndLid(){
+		if(cup != null){
+			scene.remove(cupmesh);
+			world.removeBody(cup)
+		}
+		if(lid != null){
+			world.removeBody(lid)
+			lid = null;
+		}
+		cup = generateCupOrLid(false);
+		lid = generateCupOrLid(true);
+	}
+
+	function generateCupOrLid(lid){
+
+		var r = 0.5*cupdiameter;
+		var h = cupheight;
+		var d = 0.2;
+
+		body = new CANNON.Body({
+			mass: 0,
+			type: CANNON.Body.KINEMATIC,
+			material: wood
+		});
+
+		if(lid == false){
+			var shape = new CANNON.Box(new CANNON.Vec3(0.5*d,d,0.5*h+0.1*h));
+			for(var i=0; i<10; i++){
+				phi = i/10.0*2.0*pi;
+				q = new CANNON.Quaternion();
+				q.setFromEuler(0, 0, phi);
+				body.addShape(shape, new CANNON.Vec3((r+0.5*d)*cos(phi),(r+0.5*d)*sin(phi),0), q);
+			}
+
+			shape = new CANNON.Box(new CANNON.Vec3(r+d,r+d,0.5*d));
+			body.addShape(shape, new CANNON.Vec3(0,0,-0.5*h-0.5*d));
+
+			var geometry = new THREE.CylinderGeometry( r*1.2, r*1.1, h, 32, 1, true );
+			var material = new THREE.MeshPhongMaterial( { color: 0xffffff, transparent: true, opacity:0.5, side:THREE.DoubleSide } );
+			var mesh = new THREE.Mesh(geometry, material);
+			var obj = new THREE.Object3D();
+			mesh.rotation.x = pi/2;
+			obj.add(mesh);	
+			obj.cannonbody = body;
+
+			geometry = new THREE.CylinderGeometry( r*1.1, r*1.1, h*0.01, 32, 1, false );
+			mesh = new THREE.Mesh(geometry, material);
+			mesh.rotation.x = pi/2;
+			mesh.position.z = -h*0.5
+			obj.add(mesh);
+
+			scene.add(obj);
+			cupmesh = obj;
+
+		}
+		else{
+			var shape = new CANNON.Box(new CANNON.Vec3(r+d,r+d,0.5*d));
+			body.addShape(shape, new CANNON.Vec3(0,0,0.5*h+0.5*d));			
+		}
+
+		body.position.z = dropheight + h/2.0;
+		world.addBody(body);
+
+		//obj = body2obj(body);
+		//obj.cannonbody = body;
+		//scene.add(obj);
+
+		return body;
+	}
+
+	var coinShapeLq, coinShapeHq;
+
+	function generateCoins(){
+
+		// delete all old coins:
+		for(var i=0; i<coins.length; i++){
+			world.removeBody(coins[i]);
+		}
+		coins=[];
+		for(var i=0; i<coinobjs.length; i++){
+			scene.remove(coinobjs[i]);
+		}
+		coinobjs=[];
+
+		coinShapeLq = new CANNON.Cylinder( coindiameter/2.0, coindiameter/2.0, coindiameter/coinratio, 4);
+		coinShapeHq = new CANNON.Cylinder( coindiameter/2.0, coindiameter/2.0, coindiameter/coinratio, 15);
+
+		// and generate the new coins:
+		for(var i=0; i<ncoins; i++){
+			var coinBody = new CANNON.Body({ mass: 0.01, material: wood });
+			coinBody.addShape(coinShapeLq);
+			coinBody.position.copy(cup.position);
+
+			var x=0, y=0, rr=1.1;
+			while(rr>0.25){x = Math.random()-0.5; y = Math.random()-0.5; rr = x*x + y*y} // I'm almost proud of how ugly this is.
+			coinBody.position.z += (Math.random()-0.5)*cupheight;
+			coinBody.position.x += x*cupdiameter;
+			coinBody.position.y += y*cupdiameter;
+			coinBody.quaternion.x = Math.random()-0.5;
+			coinBody.quaternion.y = Math.random()-0.5;
+			coinBody.quaternion.z = Math.random()-0.5;
+			coinBody.quaternion.w = Math.random()-0.5;
+			coinBody.quaternion.normalize();
+
+			world.addBody(coinBody);
+			geometry = new THREE.CylinderGeometry( coindiameter/2.0, coindiameter/2.0, coindiameter/coinratio, 32);
+			var material = new THREE.MeshPhongMaterial( { color: 0x00ff00 } );
+			var obj = new THREE.Object3D();		
+			mesh = new THREE.Mesh(geometry, material);
+			mesh.rotation.x = pi/2;
+			mesh.rotation.x = pi/2;
+			obj.add(mesh);
+			obj.cannonbody = coinBody;
+			scene.add(obj);
+			coins.push(coinBody);
+			coinobjs.push(obj);
+		}
+
+	}
+
+
+	var scene = new THREE.Scene();
+
+	var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.01, 10.0 );
+	camera.position.set(0.5,-0.7,0.5);
+	camera.up = new THREE.Vector3(0,0,1);
+	camera.lookAt(new THREE.Vector3(0,0,1));
+	scene.add( camera );
+
+	renderer = new THREE.WebGLRenderer({ canvas:document.getElementById("canv"), alpha: true });
+
+	var lights = [];
+	lights[ 0 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+	lights[ 1 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+	lights[ 2 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+
+	lights[ 0 ].position.set( 0, 200, 0 );
+	lights[ 1 ].position.set( 100, 200, 100 );
+	lights[ 2 ].position.set( - 100, - 200, - 100 );
+
+	scene.add( lights[ 0 ] );
+	scene.add( lights[ 1 ] );
+	scene.add( lights[ 2 ] );
+
+	var light = new THREE.AmbientLight( 0x404040 ); // soft white light
+	scene.add( light );
+
+	var controls = new THREE.OrbitControls( camera, renderer.domElement );
+
+	var tabletexture = new THREE.ImageUtils.loadTexture( "media/table.jpg" );
+	var tablegeometry = new THREE.CylinderGeometry( 0.75, 0.75, 0.04, 64);
+	var tablematerial = new THREE.MeshPhongMaterial( { map:tabletexture } );
+	var tablemesh = new THREE.Mesh(tablegeometry, tablematerial);
+	tablemesh.rotation.x = pi/2;
+	tablemesh.position.z = -0.02
+	scene.add(tablemesh)
+
+
+	var sliders = document.getElementsByClassName("slider")
+	for(var i=0; i<sliders.length; i++){
+		sliders[i].oninput = evalSlider;
+		sliders[i].onchange = evalSlider;
+	}
+
+	function evalSlider(evt){
+		var slider = evt.target;
+		var id = slider.id;
+		var val = parseFloat(slider.value);
+		var disp = document.getElementById(id + "_");
+		disp.innerHTML = val + "" + "&hairsp;";
+
+		if(id == "ratio"){coinratio = val; generateCoins();}
+		if(id == "dcoin"){coindiameter = val*0.01; generateCoins();}
+		if(id == "ncoins"){ncoins = Math.floor(val); generateCoins();}
+		if(id == "nthrows"){nthrows = Math.floor(val);}
+		if(id == "nshakes"){nshakes = Math.floor(val); movingtime = nshakes/fshake; generateCupAndLid(); generateCoins();}
+		if(id == "fshake"){fshake = val; movingtime = nshakes/fshake; generateCupAndLid(); generateCoins();}
+		if(id == "ashake"){shakeamp = val*0.01; generateCupAndLid(); generateCoins();}
+		if(id == "hdrop"){dropheight = val*0.01; generateCupAndLid(); generateCoins();}
+		if(id == "dcup"){cupdiameter = val*0.01; generateCupAndLid(); generateCoins();}
+		if(id == "hcup"){cupheight = val*0.01; generateCupAndLid(); generateCoins();}
+		if(id == "slomo"){dt = 1.0/60.0/val;}
+		if(id == "wait"){wait = val;}
+		if(id == "gravity"){world.gravity.z = -val;}
+		if(id == "stiffness"){wood_wood.contactEquationStiffness = Math.pow(10.0, val)*1000.0;}
+		if(id == "restitution"){wood_wood.restitution = val;}
+		if(id == "friction"){wood_wood.friction = Math.pow(10.0, val);}
+		if(id == "iterations"){world.solver.iterations = Math.floor(val);}
+		if(id == "hair"){
+			if(val<0.5){document.body.style.backgroundImage = "url(media/bgb.jpg)"; disp.innerHTML = "bold"}
+			else{       document.body.style.backgroundImage = "url(media/bg.jpg)"; disp.innerHTML = "timeless"}
+		}
+
+	}
+
+	generateCupAndLid();
+	generateCoins();
+	for(var i=0; i<sliders.length; i++){
+		evalSlider({target: sliders[i]});
+	}
+
+	window.addEventListener( 'resize', onWindowResize, false );
+
+	function onWindowResize(){
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+		renderer.setSize( window.innerWidth, window.innerHeight );
+	}
+	onWindowResize()
+
+	function updatePhysics() {
+
+		// Step the physics world
+		world.step(dt);
+
+		// Copy coordinates from Cannon.js to Three.js
+		
+		for(var i=0; i<scene.children.length; i++){
+			if(scene.children[i].hasOwnProperty("cannonbody")){
+				scene.children[i].position.copy(scene.children[i].cannonbody.position);
+				scene.children[i].quaternion.copy(scene.children[i].cannonbody.quaternion);
+			}
+		}
+	}
+
+	var currentheads = 0;
+	var currentedges = 0;
+	var currenttails = 0;
+	var totalheads = 0;
+	var totaledges = 0;
+	var totaltails = 0;
+
+	function animate() {
+
+		if(simulating){
+			if(time > movingtime + wait){
+
+				totalheads += currentheads;
+				totaledges += currentedges;
+				totaltails += currenttails;
+
+				if(ithrow < nthrows-1){
+					generateCupAndLid();
+					generateCoins();
+					time = 0;
+					ithrow++;
+				}
+				else{
+					stop();
+				}
+			}
+		}
+
+		time = time+dt;
+
+		cup.velocity.z = cupvz(time);
+		cup.angularVelocity.y = cupwy(time);
+
+		if(time < movingtime && lid != null){
+			lid.velocity.z = cupvz(time);
+			lid.angularVelocity.y = cupwy(time);
+		}
+		if(time > movingtime && lid != null){
+			world.removeBody(lid)
+			lid = null;
+		}
+
+		currentheads = currentedges = currenttails = 0;
+
+		for(var i=0; i<coins.length; i++){
+			if(coins[i].position.z < dropheight/2.0){
+				coins[i].shapes[0] = coinShapeHq;
+			}
+			var dir = Math.acos(coinobjs[i].getWorldDirection().z*0.99999999999)/(pi/2.0)-1;
+			coinobjs[i].children[0].material.color.copy(edgecolor);
+			if(dir>0){
+				coinobjs[i].children[0].material.color.lerp(headcolor,dir);
+				currentheads += dir;
+				currentedges += 1.0-dir;
+			}
+			if(dir<0){
+				coinobjs[i].children[0].material.color.lerp(tailcolor,-dir);
+				currenttails += -dir;
+				currentedges += 1.0-(-dir);
+			}
+		}
+		currentheads = Math.round(currentheads*10.0)/10.0;
+		currentedges = Math.round(currentedges*10.0)/10.0;
+		currenttails = Math.round(currenttails*10.0)/10.0;
+
+		totalheads = Math.round(totalheads*10.0)/10.0;
+		totaledges = Math.round(totaledges*10.0)/10.0;
+		totaltails = Math.round(totaltails*10.0)/10.0;
+
+		document.getElementById("throw_").innerHTML = ithrow+1;
+
+		document.getElementById("theads_").innerHTML = totalheads;
+		document.getElementById("tedges_").innerHTML = totaledges;
+		document.getElementById("ttails_").innerHTML = totaltails;
+
+		document.getElementById("cheads_").innerHTML = " (" + currentheads + ")";
+		document.getElementById("cedges_").innerHTML = " (" + currentedges + ")";
+		document.getElementById("ctails_").innerHTML = " (" + currenttails + ")";
+
+
+		requestAnimationFrame( animate );
+		updatePhysics();
+		renderer.render( scene, camera );
+		controls.update();
+
+	}
+	animate();
+
+	function test(){
+		generateCupAndLid();
+		generateCoins();
+		time=0;
+	}
+	function run(){
+		audio.currentTime = 0;
+		audio.volume = 0.3;
+		audio.loop = true;
+		audio.play();
+		testing = false;
+		simulating = true;
+		time = 0;
+		ithrow = 0;
+		totalheads = 0;
+		totaledges = 0;
+		totaltails = 0;
+
+		generateCupAndLid();
+		generateCoins();
+
+		for(var i=0; i<sliders.length; i++){
+			sliders[i].disabled = true;
+			sliders[i].style.visibility = "hidden";
+		}
+
+		controls.autoRotate = true;
+
+		document.getElementById("test").style.display = "none";
+		document.getElementById("run").style.display = "none";
+		document.getElementById("stop").style.display = "inline";
+	}
+	function stop(){
+		audio.pause();
+		testing = false;
+		simulating = false;
+
+		for(var i=0; i<sliders.length; i++){
+			sliders[i].disabled = false;
+			sliders[i].style.visibility = "visible";
+		}
+
+		controls.autoRotate = false;
+
+		document.getElementById("test").style.display = "inline";
+		document.getElementById("run").style.display = "inline";
+		document.getElementById("stop").style.display = "none";
+	}
+
+</script>
+</body>
+</html>
