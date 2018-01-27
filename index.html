@@ -146,6 +146,7 @@ Matt's hair: <span id="hair_"></span><br>
 <canvas id="canv">
 
 <audio id="audio" src="media/standupmathsloop.ogg"></audio>
+<audio id="ending" src="media/ending.ogg"></audio>
 
 <script src="libs/three.js"></script>
 <script src="libs/cannon.js"></script>
@@ -157,7 +158,7 @@ Matt's hair: <span id="hair_"></span><br>
 
 	function accept(){
 		if(annoyance==1){
-			document.getElementById("annoyer").innerHTML="This simulation is partly badass scientific research in order to push the bleeding edge of mathematics and physics further and partly a fan project as a tribute to the great stand-up mathematician Matt Parker.";
+			document.getElementById("annoyer").innerHTML="This simulation is partly badass scientific research in order to push the bleeding edge of mathematics and physics further and partly a fan project as a tribute to the amazing and inspiring stand-up mathematician Matt Parker.";
 			document.getElementById("ok").innerHTML="Got it!"
 			annoyance = 2;
 			return;
@@ -205,6 +206,7 @@ Matt's hair: <span id="hair_"></span><br>
 	var movingtime = nshakes/fshake;
 
 	var audio = document.getElementById("audio");
+	var ending = document.getElementById("ending");
 
 	var headcolor = new THREE.Color(0xab2100);
 	var tailcolor = new THREE.Color(0x2e5052);
@@ -580,10 +582,7 @@ Matt's hair: <span id="hair_"></span><br>
 		time=0;
 	}
 	function run(){
-		audio.currentTime = 0;
-		audio.volume = 0.3;
-		audio.loop = true;
-		audio.play();
+
 		testing = false;
 		simulating = true;
 		time = 0;
@@ -591,6 +590,11 @@ Matt's hair: <span id="hair_"></span><br>
 		totalheads = 0;
 		totaledges = 0;
 		totaltails = 0;
+
+		audio.currentTime = 0;
+		audio.volume = 0.3;
+		audio.loop = true;
+		audio.play();
 
 		generateCupAndLid();
 		generateCoins();
@@ -607,9 +611,15 @@ Matt's hair: <span id="hair_"></span><br>
 		document.getElementById("stop").style.display = "inline";
 	}
 	function stop(){
-		audio.pause();
 		testing = false;
 		simulating = false;
+
+		audio.pause();
+
+		ending.currentTime = 0;
+		ending.volume = 0.3;
+		ending.loop = false;
+		ending.play();
 
 		for(var i=0; i<sliders.length; i++){
 			sliders[i].disabled = false;
