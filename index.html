@@ -106,8 +106,8 @@ Slomo: <span id="slomo_"></span>x<br>
 <input type="range" min="1" max="10" value="2" step=0.1 class="slider" id="slomo"><br>
 Waiting: <span id="wait_"></span>s<br>
 <input type="range" min="1" max="10" value="1.7" step=0.1 class="slider" id="wait"><br>
-Gravity: -<span id="gravity_"></span>m/s²<br>
-<input type="range" min="0" max="100" value="9.8" step=0.2 class="slider" id="gravity"><br>
+Gravity: <span id="gravity_"></span>m/s²<br>
+<input type="range" min="-10" max="100" value="9.8" step=0.2 class="slider" id="gravity"><br>
 Stiffness: 10^<span id="stiffness_"></span>N/mm<br>
 <input type="range" min="-2" max="8" value="4" step=0.1 class="slider" id="stiffness"><br>
 Restitution: <span id="restitution_"></span><br>
@@ -150,7 +150,7 @@ Matt's hair: <span id="hair_"></span><br>
 
 <script src="libs/three.js"></script>
 <script src="libs/cannon.js"></script>
-<!--<script src="libs/renderphysics.js"></script>-->
+<script src="libs/renderphysics.js"></script>
 <script src="libs/OrbitControls.js"></script>
 <script>
 
@@ -276,11 +276,20 @@ Matt's hair: <span id="hair_"></span><br>
 		lid = generateCupOrLid(true);
 	}
 
-	function generateCupOrLid(lid){
+	function thinCup(){
+		var cupPos = cup.position.clone();
+		var cupRot = cup.quaternion.clone();
+		scene.remove(cupmesh);
+		world.removeBody(cup);
+		cup = generateCupOrLid(false, 0.04);
+		cup.position.copy(cupPos);
+		cup.quaternion.copy(cupRot);
+	}
+
+	function generateCupOrLid(lid, d=0.2){
 
 		var r = 0.5*cupdiameter;
 		var h = cupheight;
-		var d = 0.2;
 
 		body = new CANNON.Body({
 			mass: 0,
@@ -308,7 +317,7 @@ Matt's hair: <span id="hair_"></span><br>
 			obj.add(mesh);	
 			obj.cannonbody = body;
 
-			geometry = new THREE.CylinderGeometry( r*1.1, r*1.1, h*0.01, 32, 1, false );
+			geometry = new THREE.CylinderGeometry( r*1.1, r*1.1, h*0.1, 32, 1, false );
 			mesh = new THREE.Mesh(geometry, material);
 			mesh.rotation.x = pi/2;
 			mesh.position.z = -h*0.5
@@ -446,7 +455,10 @@ Matt's hair: <span id="hair_"></span><br>
 		if(id == "hcup"){cupheight = val*0.01; generateCupAndLid(); generateCoins();}
 		if(id == "slomo"){dt = 1.0/60.0/val;}
 		if(id == "wait"){wait = val;}
-		if(id == "gravity"){world.gravity.z = -val;}
+		if(id == "gravity"){
+			world.gravity.z = -val;
+			disp.innerHTML = -val + "" + "&hairsp;";
+		}
 		if(id == "stiffness"){wood_wood.contactEquationStiffness = Math.pow(10.0, val)*1000.0;}
 		if(id == "restitution"){wood_wood.restitution = val;}
 		if(id == "friction"){wood_wood.friction = Math.pow(10.0, val);}
@@ -528,6 +540,7 @@ Matt's hair: <span id="hair_"></span><br>
 		if(time > movingtime && lid != null){
 			world.removeBody(lid)
 			lid = null;
+			thinCup();
 		}
 
 		currentheads = currentedges = currenttails = 0;
