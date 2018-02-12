@@ -40,7 +40,7 @@ coinratio, coindiameter, frictionexponent, friction;
 
 // coin diameter over height, starting at 0.5, increasing by 50% as long as it's smaller than 5
 for( coinratio = 0.5; coinratio < 5.0; coinratio *= 1.5 ){ 
-	coindiameter = coinheight / coinratio; // computing coin diameter from height and ratio
+	coindiameter = coinheight * coinratio; // computing coin diameter from height and ratio
 	
 	// contact friction varying from 10^-5 to 10^3 in exponent steps of 0.5
 	for( frictionexponent = -5.0; frictionexponent <= 3.0; frictionexponent += 1.0 ){
