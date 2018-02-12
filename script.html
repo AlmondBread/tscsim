@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>TSC Simulator</title>
+<meta charset="utf-8">
+
+<!--
+
+Dear person who is viewing this code!
+
+Be warned that it is very ugly. The main objective was getting this done
+before the three-sided coin hype is over, so the code is basically a big
+heap of grown spaghetti. Feel free to play around in it but don't say
+you haven't been warned.
+
+-->
+
+</head>
+<body>
+
+Your setup script:<br>
+<textarea cols=100 rows=20 id="script">
+ncoins = 30; // number of coins in the cup
+nthrows = 5; // number of throws with the same parameters
+nshakes = 3; // number of shakes per throw
+fshake = 3.0; // shaking frequency in Hz
+shakeamp = 0.05; // shaking amplitude in m (half of peak to peak)
+dropheight = 0.15; // height where the open mouth of the cup stops in m
+cupdiameter = 0.1; // cup diameter in m
+cupheight = 0.18; // cup height in m
+dt = 1.0/100.0; // how much the time advances per physics simulation step in s
+wait = 2.0; // time when the coin positions are evaluated (after dropping the coins)
+gravity = -9.81; // in m/s^2
+stiffness = 10e5; // of all contacts in N/m
+restitution = 0.5; // coefficient of restitution for all contacts
+iterations = 20; // iterations per timestep that the physics engine does (I don't really know what this does since the runtime is not proportional to this value but I found 20 makes it nice and stable-ish)
+coinmass = 0.01; // coin mass in kg, I think that contact stiffness and friction are the only things that interact with the coin mass, that's why I left it out of the GUI (because you can vary the contact stiffness and friction)
+coinheight = 0.001; // thickness of the coins in m
+coinratio, coindiameter, frictionexponent, friction;
+
+// coin diameter over height, starting at 0.5, increasing by 50% as long as it's smaller than 5
+for( coinratio = 0.5; coinratio < 5.0; coinratio *= 1.5 ){ 
+	coindiameter = coinheight / coinratio; // computing coin diameter from height and ratio
+	
+	// contact friction varying from 10^-5 to 10^3 in exponent steps of 0.5
+	for( frictionexponent = -5.0; frictionexponent <= 3.0; frictionexponent += 1.0 ){
+		friction = Math.pow( 10.0, frictionexponent ); // computing friction from friction exponent
+
+		simulate();
+		
+	}
+}
+</textarea><br>
+<button onclick="eval(document.getElementById('script').value)">Run!</button> (Please note that while running, nothing will happen and the tab will appear frozen. You can open the developer console (Ctrl+Shift+K in firefox, Ctrl+Shift+I in crhome, nobody uses InternetExplorer) and see if there are still things happening. But you gotta do that before you click Run!) Once all simulations are done, the result data should appear.<br><br>
+Resulting data:<br>(You should be able to copy that into excel. For me that didn't work since my German excel wants "," as decimal number split symbol and it thought "1.5" is the first of May but I hope it works for you.)<br>
+<textarea id="csv" cols=100 rows=20></textarea><br>
+
+
+<canvas id="canv" width=40 height=30>
+
+<script src="libs/three.js"></script>
+<script src="libs/cannon.js"></script>
+<script src="libs/renderphysics.js"></script>
+<script>
+
+
+	var ncoins, nthrows, nshakes, fshake, shakeamp, dropheight, cupdiameter, cupheight, dt, wait, gravity, stiffness, restitution, iterations, coinmass, coinheight, coinratio, coindiameter, frictionexponent, friction;
+
+	var coins = [];
+	var coinobjs = [];
+
+	var headcolor = new THREE.Color(0xab2100);
+	var tailcolor = new THREE.Color(0x2e5052);
+	var edgecolor = new THREE.Color(0xffb850);
+
+	function cupvz(time){
+		// z = dropheight + shakeamp*(1-cos(2*pi*fshake * time))
+		// derivative:
+		if(time <= movingtime){
+			return shakeamp * 2*pi*fshake * sin(2*pi*fshake * time)
+		}
+		else{
+			return 0;
+		}
+	}
+
+	function cupwy(time){
+		// phi = pi*(0.5-0.5*cos(time / movingtime * pi))
+		// derivative:
+		if(time <= movingtime){
+			return pi*0.5/movingtime*pi*sin(time / movingtime * pi);
+		}
+		else{
+			return 0;
+		}
+	}		
+
+	var pi=Math.PI, cos=Math.cos, sin=Math.sin;
+
+	var time = 0.0;
+	var testing = true;
+	var simulating = false;
+
+	var world = new CANNON.World();
+	world.gravity.set(0,0,-9.81);
+	world.broadphase = new CANNON.NaiveBroadphase();
+	world.solver.iterations = 10;
+
+	var wood = new CANNON.Material('wood');
+	var wood_wood = new CANNON.ContactMaterial(wood, wood, {
+		friction: 0.003,
+		restitution: 0.5
+	});
+	console.log(wood_wood)
+	world.addContactMaterial(wood_wood);
+
+	// ground plane
+	var groundShape = new CANNON.Plane();
+	var groundBody = new CANNON.Body({ mass: 0, material: wood });
+	groundBody.addShape(groundShape);
+	world.addBody(groundBody);
+
+	var cup=null, cupmesh=null, lid=null;
+
+	function generateCupAndLid(){
+		if(cup != null){
+			scene.remove(cupmesh);
+			world.removeBody(cup)
+		}
+		if(lid != null){
+			world.removeBody(lid)
+			lid = null;
+		}
+		cup = generateCupOrLid(false);
+		lid = generateCupOrLid(true);
+	}
+
+	function thinCup(){
+		var cupPos = cup.position.clone();
+		var cupRot = cup.quaternion.clone();
+		scene.remove(cupmesh);
+		world.removeBody(cup);
+		cup = generateCupOrLid(false, 0.04);
+		cup.position.copy(cupPos);
+		cup.quaternion.copy(cupRot);
+	}
+
+	function generateCupOrLid(lid, d=0.2){
+
+		var r = 0.5*cupdiameter;
+		var h = cupheight;
+
+		body = new CANNON.Body({
+			mass: 0,
+			type: CANNON.Body.KINEMATIC,
+			material: wood
+		});
+
+		if(lid == false){
+			var shape = new CANNON.Box(new CANNON.Vec3(0.5*d,d,0.5*h+0.1*h));
+			for(var i=0; i<10; i++){
+				phi = i/10.0*2.0*pi;
+				q = new CANNON.Quaternion();
+				q.setFromEuler(0, 0, phi);
+				body.addShape(shape, new CANNON.Vec3((r+0.5*d)*cos(phi),(r+0.5*d)*sin(phi),0), q);
+			}
+
+			shape = new CANNON.Box(new CANNON.Vec3(r+d,r+d,0.5*d));
+			body.addShape(shape, new CANNON.Vec3(0,0,-0.5*h-0.5*d));
+
+			var geometry = new THREE.CylinderGeometry( r*1.2, r*1.1, h, 32, 1, true );
+			var material = new THREE.MeshPhongMaterial( { color: 0xffffff, transparent: true, opacity:0.5, side:THREE.DoubleSide } );
+			var mesh = new THREE.Mesh(geometry, material);
+			var obj = new THREE.Object3D();
+			mesh.rotation.x = pi/2;
+			obj.add(mesh);	
+			obj.cannonbody = body;
+
+			geometry = new THREE.CylinderGeometry( r*1.1, r*1.1, h*0.1, 32, 1, false );
+			mesh = new THREE.Mesh(geometry, material);
+			mesh.rotation.x = pi/2;
+			mesh.position.z = -h*0.5
+			obj.add(mesh);
+
+			scene.add(obj);
+			cupmesh = obj;
+
+		}
+		else{
+			var shape = new CANNON.Box(new CANNON.Vec3(r+d,r+d,0.5*d));
+			body.addShape(shape, new CANNON.Vec3(0,0,0.5*h+0.5*d));			
+		}
+
+		body.position.z = dropheight + h/2.0;
+		world.addBody(body);
+
+		//obj = body2obj(body);
+		//obj.cannonbody = body;
+		//scene.add(obj);
+
+		return body;
+	}
+
+	var coinShapeLq, coinShapeHq;
+
+	function generateCoins(){
+
+		// delete all old coins:
+		for(var i=0; i<coins.length; i++){
+			world.removeBody(coins[i]);
+		}
+		coins=[];
+		for(var i=0; i<coinobjs.length; i++){
+			scene.remove(coinobjs[i]);
+		}
+		coinobjs=[];
+
+		coinShapeLq = new CANNON.Cylinder( coindiameter/2.0, coindiameter/2.0, coindiameter/coinratio, 4);
+		coinShapeHq = new CANNON.Cylinder( coindiameter/2.0, coindiameter/2.0, coindiameter/coinratio, 15);
+
+		// and generate the new coins:
+		for(var i=0; i<ncoins; i++){
+			var coinBody = new CANNON.Body({ mass: coinmass, material: wood });
+			coinBody.addShape(coinShapeLq);
+			coinBody.position.copy(cup.position);
+
+			var x=0, y=0, rr=1.1;
+			while(rr>0.25){x = Math.random()-0.5; y = Math.random()-0.5; rr = x*x + y*y} // I'm almost proud of how ugly this is.
+			coinBody.position.z += (Math.random()-0.5)*cupheight;
+			coinBody.position.x += x*cupdiameter;
+			coinBody.position.y += y*cupdiameter;
+			coinBody.quaternion.x = Math.random()-0.5;
+			coinBody.quaternion.y = Math.random()-0.5;
+			coinBody.quaternion.z = Math.random()-0.5;
+			coinBody.quaternion.w = Math.random()-0.5;
+			coinBody.quaternion.normalize();
+
+			world.addBody(coinBody);
+			geometry = new THREE.CylinderGeometry( coindiameter/2.0, coindiameter/2.0, coindiameter/coinratio, 32);
+			var material = new THREE.MeshPhongMaterial( { color: 0x00ff00 } );
+			var obj = new THREE.Object3D();		
+			mesh = new THREE.Mesh(geometry, material);
+			mesh.rotation.x = pi/2;
+			mesh.rotation.x = pi/2;
+			obj.add(mesh);
+			obj.cannonbody = coinBody;
+			scene.add(obj);
+			coins.push(coinBody);
+			coinobjs.push(obj);
+		}
+
+	}
+
+
+	var scene = new THREE.Scene();
+
+	var camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.01, 10.0 );
+	camera.position.set(0.5,-0.7,0.5);
+	camera.up = new THREE.Vector3(0,0,1);
+	camera.lookAt(new THREE.Vector3(0,0,1));
+	scene.add( camera );
+
+	renderer = new THREE.WebGLRenderer({ canvas:document.getElementById("canv"), alpha: true });
+
+	var lights = [];
+	lights[ 0 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+	lights[ 1 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+	lights[ 2 ] = new THREE.PointLight( 0xffffff, 1, 0 );
+
+	lights[ 0 ].position.set( 0, 200, 0 );
+	lights[ 1 ].position.set( 100, 200, 100 );
+	lights[ 2 ].position.set( - 100, - 200, - 100 );
+
+	scene.add( lights[ 0 ] );
+	scene.add( lights[ 1 ] );
+	scene.add( lights[ 2 ] );
+
+	var light = new THREE.AmbientLight( 0x404040 ); // soft white light
+	scene.add( light );
+
+	var tabletexture = new THREE.ImageUtils.loadTexture( "media/table.jpg" );
+	var tablegeometry = new THREE.CylinderGeometry( 0.75, 0.75, 0.04, 64);
+	var tablematerial = new THREE.MeshPhongMaterial( { map:tabletexture } );
+	var tablemesh = new THREE.Mesh(tablegeometry, tablematerial);
+	tablemesh.rotation.x = pi/2;
+	tablemesh.position.z = -0.02
+	scene.add(tablemesh)
+
+
+	window.addEventListener( 'resize', onWindowResize, false );
+
+	function onWindowResize(){
+		camera.aspect = window.innerWidth / window.innerHeight;
+		camera.updateProjectionMatrix();
+		renderer.setSize( 0.5*window.innerWidth, 0.5*window.innerHeight );
+	}
+
+	function updatePhysics() {
+
+		// Step the physics world
+		world.step(dt);
+
+		// Copy coordinates from Cannon.js to Three.js
+		
+		for(var i=0; i<scene.children.length; i++){
+			if(scene.children[i].hasOwnProperty("cannonbody")){
+				scene.children[i].position.copy(scene.children[i].cannonbody.position);
+				scene.children[i].quaternion.copy(scene.children[i].cannonbody.quaternion);
+			}
+		}
+	}
+
+	var currentheads = 0;
+	var currentedges = 0;
+	var currenttails = 0;
+	var totalheads = 0;
+	var totaledges = 0;
+	var totaltails = 0;
+	
+	var experimentCounter = 0;
+
+	function simulate() {
+	
+		console.log("Altering parameters...")
+	
+		simulating = true;
+		time = 0;
+		ithrow = 0;
+		totalheads = 0;
+		totaledges = 0;
+		totaltails = 0;
+
+		movingtime = nshakes/fshake;
+		wood_wood.contactEquationStiffness = stiffness;
+		wood_wood.restitution = restitution;
+		wood_wood.friction = friction;
+		world.solver.iterations = iterations;
+		
+		generateCupAndLid();
+		generateCoins();
+
+		while(simulating){
+			if(time > movingtime + wait){ // trial done
+				onWindowResize()
+				//renderer.render( scene, camera );
+			
+				totalheads += currentheads;
+				totaledges += currentedges;
+				totaltails += currenttails;
+				
+				// order: NumberOfCoins, CoinThickness, CoinDiameter, DiameterOverThickness, CoinMass, NumberOfThrows, NumberOfShakes, ShakingFrequency, ShakingAmplitude, DropHeight, CupDiameter, CupHeight, TimeStep, WaitingTime, Gravity, Stiffness, Friction, Restitution, Iterations, Trial, Heads, Tails, Edges\n"
+
+				csv.innerHTML += ncoins + "\t" + coinheight + "\t" + coindiameter + "\t" + coinratio + "\t" + coinmass + "\t" + nthrows + "\t" + nshakes + "\t" + fshake + "\t" + shakeamp + "\t" + dropheight + "\t" + cupdiameter + "\t" + cupheight + "\t" + dt + "\t" + wait + "\t" + gravity + "\t" + stiffness + "\t" + friction + "\t" + restitution + "\t" + iterations + "\t" + (ithrow+1) + "\t" + currentheads + "\t" + currenttails + "\t" + currentedges + "\n";
+				
+				experimentCounter++;
+				console.log("Experiment " + experimentCounter + " done, Heads/Tails/Edges: " + currentheads + "/" + currenttails + "/" + currentedges);
+				
+				if(ithrow < nthrows-1){
+					generateCupAndLid();
+					generateCoins();
+					time = 0;
+					ithrow++;
+				}
+				else{
+					simulating = false;
+				}
+			}
+
+			time = time+dt;
+
+			cup.velocity.z = cupvz(time);
+			cup.angularVelocity.y = cupwy(time);
+
+			if(time < movingtime && lid != null){
+				lid.velocity.z = cupvz(time);
+				lid.angularVelocity.y = cupwy(time);
+			}
+			if(time > movingtime && lid != null){
+				world.removeBody(lid)
+				lid = null;
+				thinCup();
+			}
+
+			currentheads = currentedges = currenttails = 0;
+
+			for(var i=0; i<coins.length; i++){
+				if(coins[i].position.z < dropheight/2.0){
+					coins[i].shapes[0] = coinShapeHq;
+				}
+				var dir = Math.acos(coinobjs[i].getWorldDirection().z*0.99999999999)/(pi/2.0)-1;
+				coinobjs[i].children[0].material.color.copy(edgecolor);
+				if(dir>0){
+					coinobjs[i].children[0].material.color.lerp(headcolor,dir);
+					currentheads += dir;
+					currentedges += 1.0-dir;
+				}
+				if(dir<0){
+					coinobjs[i].children[0].material.color.lerp(tailcolor,-dir);
+					currenttails += -dir;
+					currentedges += 1.0-(-dir);
+				}
+			}
+			currentheads = Math.round(currentheads*10.0)/10.0;
+			currentedges = Math.round(currentedges*10.0)/10.0;
+			currenttails = Math.round(currenttails*10.0)/10.0;
+
+			totalheads = Math.round(totalheads*10.0)/10.0;
+			totaledges = Math.round(totaledges*10.0)/10.0;
+			totaltails = Math.round(totaltails*10.0)/10.0;
+
+			updatePhysics();
+			renderer.render( scene, camera );
+		}
+
+	}
+	
+	var csv = document.getElementById("csv");
+	
+	csv.innerHTML = "NumberOfCoins\tCoinThickness\tCoinDiameter\tDiameterOverThickness\tCoinMass\tNumberOfThrows\tNumberOfShakes\tShakingFrequency\tShakingAmplitude\tDropHeight\tCupDiameter\tCupHeight\tTimeStep\tWaitingTime\tGravity\tStiffness\tFriction\tRestitution\tIterations\tTrial\tHeads\tTails\tEdges\n"
+	
+</script>
+</body>
+</html>
